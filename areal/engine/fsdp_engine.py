@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
+from areal.utils.device import is_torch_npu_available
 import torch
 import torch.distributed as dist
 import torch.distributed.nn.functional as dist_F
@@ -54,7 +55,10 @@ from areal.utils.ulysses import (
     set_ulysses_sequence_parallel_group,
     ulysses_pad,
     ulysses_pad_and_slice_inputs,
+    ulysses_pad_and_slice_loss_inputs,
 )
+from areal.utils.profile import Profiler, ProfMemory
+from areal.platforms import is_npu_available
 
 
 class FSDPEngine(BaseHFEngine):
@@ -64,6 +68,8 @@ class FSDPEngine(BaseHFEngine):
         self.fsdp_tp_device_mesh = None
         self.mixed_precision_policy = None
         self.cpu_offload = None
+        self.prof = None
+        self.prof_mem = None
 
         self.dp_world_size = None
         self.sp_world_size = None
@@ -280,6 +286,14 @@ class FSDPEngine(BaseHFEngine):
         # Create device model
         self.create_device_model()
 
+        self.prof_mem = ProfMemory(self.config.prof_mem)
+        if self.prof_mem.enable:
+            # mermory profiling start 
+            torch.npu.memory._record_memory_history()
+        self.prof = Profiler(self.config.profiler)
+        if self.prof.enable:
+            self.prof.start()
+
         # Monkey patch: replace attention's forward() with Ulysses variant.
         apply_monkey_patch(
             model=self.model,
@@ -379,7 +393,7 @@ class FSDPEngine(BaseHFEngine):
         )
 
     def upload_weights(self, meta: WeightUpdateMeta):
-        if meta.type == "nccl":
+        if meta.type == "nccl" or meta.type == "hccl":
             if not self.weight_update_group_initialized:
                 self._init_distributed_weight_update(meta)
             self._update_weights_from_distributed(meta.nccl_param_specs)
@@ -405,8 +419,10 @@ class FSDPEngine(BaseHFEngine):
         # which blocks creating another TCP store for weight update.
         os.environ["TORCHELASTIC_USE_AGENT_STORE"] = str(False)
         if dist.get_rank() == 0:
+            # FIXME: add npu to platform
+            backend = current_platform.communication_backend
             self.weight_update_group = init_custom_process_group(
-                backend=current_platform.communication_backend,
+                backend=backend,
                 world_size=meta.alloc_mode.gen.world_size + 1,
                 init_method=f"tcp://{meta.nccl_master_address}:{meta.nccl_master_port}",
                 rank=0,
@@ -431,8 +447,7 @@ class FSDPEngine(BaseHFEngine):
                     tensor = param.data
                 if dist.get_rank() == 0:
                     self.logger.debug(f"Broadcasting {name} with shape {tensor.shape}")
-                    dist.broadcast(tensor, src=0, group=self.weight_update_group)
-                del tensor
+                    dist.broadcast(tensor, src=0, group=self.weight_update_group, async_op=False)
             dist.barrier(device_ids=[self.device.index])
             current_platform.synchronize()
 
@@ -531,6 +546,8 @@ class FSDPEngine(BaseHFEngine):
                 inputs["input_ids"] = ulysses_input_ids
                 if ulysses_position_ids is not None:
                     inputs["position_ids"] = ulysses_position_ids
+
+                inputs = ulysses_pad_and_slice_loss_inputs(inputs, padded_mb_input, self.sp_world_size)
             else:
                 inputs = padded_mb_input
 
@@ -538,13 +555,10 @@ class FSDPEngine(BaseHFEngine):
 
             logits = outputs.logits.squeeze(0)
             if self.sp_world_size > 1:
-                # Gather and remove Ulysses padding
-                gathered_logits = dist_F.all_gather(logits, group=self.sp_group)
-                logits = torch.cat(gathered_logits, dim=0)
-                logits = logits[:-ulysses_pad_size] if ulysses_pad_size > 0 else logits
-            # Remove original padding
-            logits = logits[:-pad_length] if pad_length > 0 else logits
-            loss = loss_fn(logits, mb_input)
+                loss = loss_fn(logits, inputs)
+            else:
+                logits = logits[:-pad_length] if pad_length > 0 else logits
+                loss = loss_fn(logits, mb_input)
             loss_scale = loss_weight_fn(mb_input) / total_loss_weight
 
             # Scale loss for accumulation
@@ -566,6 +580,20 @@ class FSDPEngine(BaseHFEngine):
             update_successful = False
         else:
             self.optimizer.step()
+
+            if self.prof.enable:
+                self.prof.step()
+                self.prof.stop()
+            
+            # mermory profiling end
+            if self.prof_mem.enable:
+                rank = torch.distributed.get_rank()
+                save_path = os.path.join(self.prof_mem.save_path + "_" + str(rank))
+                if not os.path.exists(self.prof_mem.save_path):
+                    os.mkdir(self.prof_mem.save_path)
+                    
+                torch.npu.memory._dump_snapshot(f"{self.prof_mem.save_path}/prof_memory_log_{rank}.pickle")
+
             update_successful = True
 
         current_lr = self.lr_scheduler.get_last_lr()[0]
@@ -633,6 +661,7 @@ class FSDPEngine(BaseHFEngine):
                 inputs["input_ids"] = ulysses_input_ids
                 if ulysses_position_ids is not None:
                     inputs["position_ids"] = ulysses_position_ids
+                inputs = ulysses_pad_and_slice_loss_inputs(inputs, padded_mb_input, self.sp_world_size)
             else:
                 inputs = padded_mb_input
 
@@ -640,13 +669,10 @@ class FSDPEngine(BaseHFEngine):
 
             logits = outputs.logits.squeeze(0)
             if self.sp_world_size > 1:
-                # Gather and remove Ulysses padding
-                gathered_logits = dist_F.all_gather(logits, group=self.sp_group)
-                logits = torch.cat(gathered_logits, dim=0)
-                logits = logits[:-ulysses_pad_size] if ulysses_pad_size > 0 else logits
-            # Remove original padding
-            logits = logits[:-pad_length] if pad_length > 0 else logits
-            loss = loss_fn(logits, mb_input)
+                loss = loss_fn(logits, inputs)
+            else:
+                logits = logits[:-pad_length] if pad_length > 0 else logits
+                loss = loss_fn(logits, mb_input)
 
             # Simple weight calculation (could be improved)
             loss_scale = loss_weight_fn(mb_input) / total_loss_weight

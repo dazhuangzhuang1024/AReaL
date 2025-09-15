@@ -192,6 +192,18 @@ def concat_padded_tensors(
         result[key] = torch.cat(tensors_to_concat, dim=0)
     return TensorDict(result, batch_size=new_batch_size)
 
+def distributed_batch(batch: List[TensorDict], rank, batch_size, device, world_size):
+    if rank == 0:
+        batch = [batch]
+    else:
+        batch = [None]
+    # TODO: try to use scatter
+    dist.broadcast_object_list(batch, src=0)
+    local_bsz = batch_size // world_size
+    start, end = rank * local_bsz, (rank + 1) * local_bsz
+    batch = concat_padded_tensors(batch[0][start:end]).to(device)
+    return batch
+
 
 def to_device(data: Dict[str, torch.Tensor | Any], device) -> Dict[str, torch.Tensor]:
     """Move tensors in a dictionary to the specified device."""

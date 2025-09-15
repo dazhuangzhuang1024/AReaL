@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
+from areal.utils.device import is_torch_npu_available
 import numpy as np
 import torch
 from PIL.Image import Image as ImageObject
@@ -12,6 +13,7 @@ from areal.api.alloc_mode import AllocationMode
 from areal.api.cli_args import GenerationHyperparameters
 from areal.platforms import current_platform
 from areal.utils.network import find_free_ports, gethostip
+from areal.utils.device import is_torch_npu_available
 
 if TYPE_CHECKING:
     from transformers import AutoProcessor
@@ -94,7 +96,7 @@ class ParamSpec:
 
 @dataclass
 class WeightUpdateMeta:
-    type: Literal["disk", "nccl"]
+    type: Literal["disk", "nccl", "hccl"]
     path: str | None = None
     alloc_mode: AllocationMode | None = None
 
@@ -123,16 +125,18 @@ class WeightUpdateMeta:
         )
 
     @classmethod
-    def from_fsdp_nccl(
+    def from_fsdp_xccl(
         cls,
+        type: str,
         allocation_mode: AllocationMode,
         fsdp_engine: "TrainEngine",
         nccl_group_name: str = "update_weight_group",
         weight_chunked_mem_mb: int = 1024,
     ):
         param_specs = fsdp_engine.get_param_specs(weight_chunked_mem_mb)
+        backend = current_platform.communication_backend 
         return cls(
-            type=current_platform.communication_backend,
+            type=backend,
             alloc_mode=allocation_mode,
             nccl_master_address=gethostip(),
             nccl_master_port=find_free_ports(1)[0],

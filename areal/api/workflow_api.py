@@ -256,7 +256,7 @@ class WorkflowExecutor:
         except queue.Full:
             raise RuntimeError("Input queue full. Please increase queue_size.")
 
-    def wait(self, count: int, timeout: float | None = None) -> TensorDict:
+    def wait(self, count: int, timeout: float | None = None, distributed_load: bool = True) -> TensorDict:
         tik = time.perf_counter()
         timeout = timeout or float(7 * 24 * 3600)
         while not self.exiting.is_set() and time.perf_counter() - tik < timeout:
@@ -286,7 +286,10 @@ class WorkflowExecutor:
             self.result_cache[count:],
         )
         random.shuffle(results)
-        return concat_padded_tensors([r.data for r in results])
+        if distributed_load:
+            return concat_padded_tensors([r.data for r in results])
+        else:
+            return [r.data for r in results]
 
     def rollout_batch(
         self,
@@ -311,10 +314,12 @@ class WorkflowExecutor:
         workflow: Optional["RolloutWorkflow"] = None,
         workflow_builder: Optional[Callable] = None,
         should_accept: Callable | None = None,
+        distributed_load: bool = True
     ):
         if not hasattr(self, "data_generator"):
             self.data_generator = cycle_dataloader(dataloader)
         assert dataloader.batch_size is not None
+        assert dataloader.batch_size < self.input_queue.maxsize, f"Input_queue_maxsize({self.input_queue.maxsize}) must larger than your batch_size({dataloader.batch_size})!(check your max_concurrent_rollouts)"
         while True:
             # Submit at least two batches to allow maximum overlap
             if (
@@ -331,7 +336,7 @@ class WorkflowExecutor:
                         should_accept=should_accept,
                     )
             try:
-                return self.wait(dataloader.batch_size, timeout=1)
+                return self.wait(dataloader.batch_size, timeout=1, distributed_load=distributed_load)
             except TimeoutError:
                 pass
 
