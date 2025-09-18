@@ -5,7 +5,6 @@ import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
-from areal.utils.device import is_torch_npu_available
 import torch
 import torch.distributed as dist
 import torch.distributed.nn.functional as dist_F

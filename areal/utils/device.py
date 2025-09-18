@@ -1,8 +1,9 @@
 from typing import Tuple
 
+import torch
 import torch.distributed as dist
 
-from areal.platforms import current_platform
+from areal.platforms import current_platform, is_npu_available
 from areal.utils import logging
 
 logger = logging.getLogger(__file__)
