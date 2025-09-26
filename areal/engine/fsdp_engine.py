@@ -45,6 +45,8 @@ from areal.utils.ulysses import (
     ulysses_pad,
     ulysses_pad_and_slice_inputs,
 )
+from realhf.base.constants import rank_mapping_of_model
+
 
 
 class FSDPEngine(BaseHFEngine):
@@ -178,6 +180,7 @@ class FSDPEngine(BaseHFEngine):
         )
 
         self.create_optimizer(ft_spec)
+
         self.initialized = True
 
     def save(self, meta: SaveLoadMeta):
