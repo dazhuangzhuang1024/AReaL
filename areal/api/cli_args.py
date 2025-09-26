@@ -17,6 +17,44 @@ from areal.utils import name_resolve, pkg_version
 
 
 @dataclass
+class ProfilerConfig:
+    """Worker profiler config."""
+    enable: bool = field(
+        default=False,
+        metadata={"help": "Open it when you want to profile the actor model."},
+    )
+    save_path: str = field(
+        default="./profiler_dir",
+        metadata={
+            "help": "Path to the save profiler."
+        },
+    )
+    level: str = field(
+        default="level0",
+        metadata={
+            "help": "Collection level—options are level_none, level0, level1, and level2."
+        },
+    )
+    global_step: int = field(
+        default=0, metadata={"help": "Collect profiler from the global_step iteration step."}
+    )
+    step_start: int = field(
+        default=0, metadata={"help": "Start step in mini_batch_size."}
+    )
+    step_end: int = field(
+        default=1, metadata={"help": "End step in mini_batch_size."}
+    )
+    profile_ranks: List[int] = field(
+        default_factory=lambda: [0],
+        metadata={"help": "Specify the ranks to profile."},
+    )
+    memory_usage: bool = field(
+        default=False,
+        metadata={"help": "Use torch snapshot API to collect memory usage."},
+    )
+
+
+@dataclass
 class NormConfig:
     """Configuration for reward/advantage normalization."""
 
@@ -265,6 +303,8 @@ class TrainEngineConfig:
         default="", metadata={"help": "Training backend (refer to documentation)"}
     )
     fsdp: FSDPEngineConfig = field(default_factory=FSDPEngineConfig)
+    profiler: ProfilerConfig = field(default_factory=ProfilerConfig)
+
 
     # Lora
     use_lora: bool = field(

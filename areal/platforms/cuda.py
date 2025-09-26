@@ -63,3 +63,39 @@ class CudaPlatform(Platform):
     @classmethod
     def synchronize(cls) -> None:
         torch.cuda.synchronize()
+
+    @classmethod
+    def profiler(self, config):
+        prof = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(
+                wait=max(config.step_start - 1, 0),
+                warmup=1 if config.step_start > 0 else 0,
+                active=config.step_end - config.step_start,
+                repeat=1,
+            ),
+            profile_memory=True,
+            record_shapes=True,
+            with_stack=True,
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(config.save_path),
+        )
+        return prof
+
+
+    @classmethod
+    def start_dump(self):
+        torch.cuda.memory._record_memory_history()
+
+
+    @classmethod
+    def step_dump(self, file):
+        torch.cuda.memory._dump_snapshot(file)
+
+
+    @classmethod
+    def stop_dump(self):
+        torch.cuda.memory._record_memory_history(enabled=None)
+
