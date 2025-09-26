@@ -361,12 +361,14 @@ class RemotevLLMEngine(InferenceEngine):
         workflow: Optional[RolloutWorkflow] = None,
         workflow_builder: Optional[Callable] = None,
         should_accept: Callable | None = None,
+        distributed_load: bool = True
     ):
         return self.workflow_executor.prepare_batch(
             dataloader=dataloader,
             workflow=workflow,
             workflow_builder=workflow_builder,
             should_accept=should_accept,
+            distributed_load=distributed_load,
         )
 
     def pause(self):

@@ -22,6 +22,7 @@ from areal.utils.data import (
     broadcast_tensor_container,
     cycle_dataloader,
     tensor_container_to,
+    distributed_batch,
 )
 from areal.utils.device import log_gpu_stats
 from areal.utils.evaluator import Evaluator
@@ -97,20 +98,25 @@ def main(args):
     seeding.set_random_seed(config.seed, key=f"trainer{rank}")
     allocation_mode = AllocationMode.from_str(config.allocation_mode)
     parallel_strategy = allocation_mode.train
-    train_dataset = get_boba_math_dataset(
-        config.train_dataset.path, tokenizer, rank=rank, world_size=world_size
-    )
-    # Create dataset and dataloaders
-    train_dataloader = StatefulDataLoader(
-        train_dataset,
-        batch_size=config.train_dataset.batch_size,
-        shuffle=config.train_dataset.shuffle,
-        num_workers=config.train_dataset.num_workers,
-        collate_fn=lambda x: x,
-        drop_last=config.train_dataset.drop_last,
-    )
-    config.rollout.consumer_batch_size *= world_size
-    config.rollout.max_concurrent_rollouts *= world_size
+    if config.train_dataset.distributed_load:
+        train_dataset = get_boba_math_dataset(config.train_dataset.path, tokenizer, rank=rank, world_size=world_size)
+    else:
+        train_dataset = get_boba_math_dataset(config.train_dataset.path, tokenizer, rank=0, world_size=1)
+    if config.train_dataset.distributed_load or rank == 0:
+        # Create dataset and dataloaders
+        train_dataloader = StatefulDataLoader(
+            train_dataset,
+            batch_size=config.train_dataset.batch_size,
+            shuffle=config.train_dataset.shuffle,
+            num_workers=config.train_dataset.num_workers,
+            collate_fn=lambda x: x,
+            drop_last=config.train_dataset.drop_last,
+        )
+        config.rollout.consumer_batch_size *= world_size
+        config.rollout.max_concurrent_rollouts *= world_size
+    else:
+        train_dataloader = StatefulDataLoader([])
+
 
     actor = FSDPPPOActor(config=config.actor)
     actor.create_process_group(parallel_strategy=parallel_strategy)
@@ -119,6 +125,8 @@ def main(args):
     dateset_len_tensor = torch.tensor(
         [train_dataset_len], dtype=torch.long, device=device
     )
+    if not config.train_dataset.distributed_load:
+        dist.broadcast(dateset_len_tensor, src=0)
     train_dataset_len = dateset_len_tensor.item()
     ft_spec = FinetuneSpec(
         total_train_epochs=config.total_train_epochs,
@@ -145,6 +153,8 @@ def main(args):
     # NOTE: Weight update meta only requires address and free port of rank 0,
     # but `WeightUpdateMeta.from_fsdp_xccl` has to be executed on all ranks
     weight_update_meta = get_model_update_meta(config, actor)
+    if not config.train_dataset.distributed_load:
+        dist.broadcast_object_list(weight_update_meta, src=0)
     weight_update_meta = weight_update_meta[0]
 
     # Create rollout workflow
@@ -188,7 +198,7 @@ def main(args):
     steps_per_epoch = train_dataset_len
     max_steps = total_epochs * steps_per_epoch
 
-    data_generator = cycle_dataloader(train_dataloader)
+
     for global_step in range(start_step, max_steps):
         if stop_step and global_step >= stop_step:
             logger.info("Training stopped at step %d", global_step)
@@ -203,29 +213,52 @@ def main(args):
             steps_per_epoch=steps_per_epoch,
         )
 
-        with stats_tracker.record_timing("rollout"):
-            batch = None
-            if actor.is_data_parallel_head():
-                if config.async_training:
-                    batch = rollout.prepare_batch(
-                        train_dataloader,
-                        workflow=workflow,
-                        should_accept=lambda sample: True,
-                    )
-                else:
-                    batch = rollout.rollout_batch(
-                        next(data_generator),
-                        workflow=workflow,
-                        should_accept=lambda sample: True,
-                    )
-                batch = tensor_container_to(batch, actor.device)
-            batch = broadcast_tensor_container(
-                batch,
-                src_rank=actor.current_data_parallel_head(),
-                group=actor.context_and_model_parallel_group,
-            )
+        if config.train_dataset.distributed_load:
+            data_generator = cycle_dataloader(train_dataloader)
+            with stats_tracker.record_timing("rollout"):
+                batch = None
+                if actor.is_data_parallel_head():
+                    if config.async_training:
+                        batch = rollout.prepare_batch(
+                            train_dataloader,
+                            workflow=workflow,
+                            should_accept=lambda sample: True,
+                        )
+                    else:
+                        batch = rollout.rollout_batch(
+                            next(data_generator),
+                            workflow=workflow,
+                            should_accept=lambda sample: True,
+                        )
+                    batch = tensor_container_to(batch, actor.device)
+                batch = broadcast_tensor_container(
+                    batch,
+                    src_rank=actor.current_data_parallel_head(),
+                    group=actor.context_and_model_parallel_group,
+                )
+        else:
+            if rank == 0:
+                data_generator = cycle_dataloader(train_dataloader)
+                with stats_tracker.record_timing("rollout"):
+                    if config.async_training:
+                        batch = rollout.prepare_batch(train_dataloader, workflow=workflow, distributed_load=False)
+                    else:
+                        try:
+                            data = next(data_generator)
+                        except StopIteration:
+                            data_generator = iter(train_dataloader)
+                            data = next(data_generator)
+                        batch = rollout.rollout_batch(data, workflow=workflow)
+            else:
+                batch = None
+
         # Create barrier to synchronize all rollout processes.
         dist.barrier(device_ids=[actor.device.index])
+
+        if not config.train_dataset.distributed_load:
+            batch = distributed_batch(batch, rank, config.train_dataset.batch_size, device, world_size, config.train_dataset.balance_batch)
+        else:
+            batch = batch.to(actor.device)
         current_platform.synchronize()
 
         if config.actor.recompute_logprob or config.actor.use_decoupled_loss:
@@ -278,6 +311,7 @@ def main(args):
                 stats_logger,
                 train_dataloader,
                 tokenizer=tokenizer,
+                distributed_load=config.train_dataset.distributed_load,
             )
         stats_logger.commit(epoch, step, global_step, stats)
 
