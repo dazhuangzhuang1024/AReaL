@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List
 
+from transformers.utils.import_utils import is_torch_npu_available
 import torch
 import torch.distributed as dist
 import torch.distributed.nn.functional as dist_F
@@ -40,6 +41,10 @@ from areal.utils.ulysses import (
     ulysses_pad,
     ulysses_pad_and_slice_inputs,
 )
+from realhf.base.constants import rank_mapping_of_model
+
+if is_torch_npu_available():
+    from areal.utils.profile import ProfMemory
 
 
 class FSDPEngine(BaseHFEngine):
@@ -156,6 +161,10 @@ class FSDPEngine(BaseHFEngine):
         )
 
         self.create_optimizer(ft_spec)
+        if self.config.prof_mem.enable:
+            self.prof_mem = ProfMemory(self.config.prof_mem)
+            torch.npu.memory._record_memory_history()
+
         self.initialized = True
 
     def save(self, meta: SaveLoadMeta):
@@ -419,6 +428,13 @@ class FSDPEngine(BaseHFEngine):
             update_successful = False
         else:
             self.optimizer.step()
+
+            if self.config.prof_mem.enable:
+                save_path = os.path.join(self.prof_mem.save_path + "_" + str(self.rank))
+                if not os.path.exists(save_path):
+                    os.mkdir(save_path)
+                torch.npu.memory._dump_snapshot(f"{save_path}/prof_memory_log_{self.rank}.pickle")
+
             update_successful = True
 
         current_lr = self.lr_scheduler.get_last_lr()[0]

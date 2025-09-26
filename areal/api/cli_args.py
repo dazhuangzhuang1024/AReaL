@@ -17,6 +17,33 @@ from areal.utils import name_resolve, pkg_version
 
 
 @dataclass
+class ProfilerConfig:
+    """Worker profiler config.
+
+    Args:
+        discrete (bool): Thre for each task has its own database, False for all tasks in one training step
+            share one database.
+        all_ranks (bool): Whether to profile all ranks.
+        ranks (list[int]): The ranks that will be profiled. Defaults to [0].
+    """
+    enable: bool = False
+    save_path: Optional[str] = "./profiler_dir"
+    level: str = "level1"
+    step_start: int = 0
+    step_end: int = 1
+    profile_ranks: Optional[list[hydra_init]] = None
+
+
+@dataclass
+class ProfilerMemoryConfig:
+    enable: bool = field(default=False)
+    save_dir: str = field(
+        default="./profiling_memory_log",
+        metadata={"help": "Directory to save memory profiling file."}
+    )
+
+
+@dataclass
 class NormConfig:
     """Configuration for reward/advantage normalization."""
 
@@ -265,6 +292,9 @@ class TrainEngineConfig:
         default="", metadata={"help": "Training backend (refer to documentation)"}
     )
     fsdp: FSDPEngineConfig = field(default_factory=FSDPEngineConfig)
+    profiler: ProfilerConfig = field(default_factory=ProfilerConfig)
+    prof_mem: ProfilerMemoryConfig = field(default_factory=ProfilerMemoryConfig)
+
 
 
 @dataclass

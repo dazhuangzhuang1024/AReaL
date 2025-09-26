@@ -1,6 +1,7 @@
 import functools
 from typing import Any, Dict, List, Optional
 
+from transformers.utils.import_utils import is_torch_npu_available
 import torch
 
 from areal.api.cli_args import MicroBatchSpec, PPOActorConfig
@@ -15,6 +16,10 @@ from areal.utils.functional import (
     ppo_actor_loss_fn,
     reward_overlong_penalty,
 )
+
+
+if is_torch_npu_available():
+    from areal.utils.profile import Profiler
 
 
 class PPOActor:
@@ -42,6 +47,7 @@ class PPOActor:
 
         self.temperature = config.temperature
         self.dynamic_sampling = config.dynamic_sampling
+        self.count = 0
 
     @torch.no_grad()
     def compute_logp(
@@ -244,7 +250,12 @@ class PPOActor:
             data,
             mb_spec=MicroBatchSpec(n_mbs=self.config.ppo_n_minibatches),
         )
-        for mb in mb_inputs.mbs:
+
+        if self.count == 0 and self.config.profiler.enable:
+            prof = Profiler(self.config.profiler)
+            prof.start()
+
+        for idx, mb in enumerate(mb_inputs.mbs):
             train_stat = self.engine.train_batch(
                 mb,
                 loss_fn=functools.partial(
@@ -257,10 +268,18 @@ class PPOActor:
                 ),
                 loss_weight_fn=lambda x: x["loss_mask"].count_nonzero(),
             )
+            if self.count == 0 and self.config.profiler.enable:
+                prof.step()
+                if idx == prof.step_end:
+                    prof.stop()
+
             stats_tracker.scalar(**train_stat)
             all_stats.append(
                 stats_tracker.export(reduce_group=self.engine.data_parallel_group)
             )
+        if self.count == 0 and self.config.profiler.enable:
+            self.count += 1
+
         all_stats[0].update(global_stats)
         return all_stats
 
