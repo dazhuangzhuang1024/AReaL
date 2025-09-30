@@ -69,6 +69,7 @@ For detailed examples, see the experiment configurations in the `examples/` dire
 ### Others
 
 - [Scheduler Configuration](section-scheduler)
+- [vLLM Configuration](section-v-llm)
 
 ______________________________________________________________________
 
@@ -89,6 +90,7 @@ Base configuration class for all experiment types with common settings.
 | `total_train_steps`  | integer \| None                             | `None`       | Terminate training after this number of steps. For benchmarking purposes only. None indicates normal training.             |
 | `total_train_n_seqs` | integer \| None                             | `None`       | Terminate training after consuming this number of samples. For benchmarking purposes only. None indicates normal training. |
 | `tokenizer_path`     | string                                      | `""`         | Path to the tokenizer.                                                                                                     |
+| `weight_update_mode` | string                                      | `"disk"`     | -                                                                                                                          |
 | `train_dataset`      | [`DatasetConfig`](section-dataset)          | **Required** | -                                                                                                                          |
 | `valid_dataset`      | [`DatasetConfig`](section-dataset) \| None  | `None`       | -                                                                                                                          |
 | `saver`              | [`SaverConfig`](section-saver)              | **Required** | -                                                                                                                          |
@@ -96,6 +98,7 @@ Base configuration class for all experiment types with common settings.
 | `stats_logger`       | [`StatsLoggerConfig`](section-stats-logger) | **Required** | -                                                                                                                          |
 | `recover`            | [`RecoverConfig`](section-recover)          | **Required** | -                                                                                                                          |
 | `sglang`             | [`SGLangConfig`](section-sg-lang)           | **Required** | -                                                                                                                          |
+| `vllm`               | [`vLLMConfig`](section-v-llm)               | **Required** | -                                                                                                                          |
 | `launcher`           | [`LauncherConfig`](section-launcher)        | **Required** | -                                                                                                                          |
 | `scheduler`          | [`SchedulerConfig`](section-scheduler)      | **Required** | -                                                                                                                          |
 
@@ -117,6 +120,7 @@ experiments.
 | `total_train_steps`  | integer \| None                                                   | `None`       | Terminate training after this number of steps. For benchmarking purposes only. None indicates normal training.             |
 | `total_train_n_seqs` | integer \| None                                                   | `None`       | Terminate training after consuming this number of samples. For benchmarking purposes only. None indicates normal training. |
 | `tokenizer_path`     | string                                                            | `""`         | Path to the tokenizer.                                                                                                     |
+| `weight_update_mode` | string                                                            | `"disk"`     | -                                                                                                                          |
 | `train_dataset`      | [`DatasetConfig`](section-dataset)                                | **Required** | -                                                                                                                          |
 | `valid_dataset`      | [`DatasetConfig`](section-dataset) \| None                        | `None`       | -                                                                                                                          |
 | `saver`              | [`SaverConfig`](section-saver)                                    | **Required** | -                                                                                                                          |
@@ -124,6 +128,7 @@ experiments.
 | `stats_logger`       | [`StatsLoggerConfig`](section-stats-logger)                       | **Required** | -                                                                                                                          |
 | `recover`            | [`RecoverConfig`](section-recover)                                | **Required** | -                                                                                                                          |
 | `sglang`             | [`SGLangConfig`](section-sg-lang)                                 | **Required** | -                                                                                                                          |
+| `vllm`               | [`vLLMConfig`](section-v-llm)                                     | **Required** | -                                                                                                                          |
 | `launcher`           | [`LauncherConfig`](section-launcher)                              | **Required** | -                                                                                                                          |
 | `scheduler`          | [`SchedulerConfig`](section-scheduler)                            | **Required** | -                                                                                                                          |
 | `async_training`     | boolean                                                           | `True`       | Enable asynchronous training between rollout and policy update.                                                            |
@@ -149,6 +154,7 @@ Configuration for Reward Model (RW) training experiments.
 | `total_train_steps`  | integer \| None                             | `None`       | Terminate training after this number of steps. For benchmarking purposes only. None indicates normal training.             |
 | `total_train_n_seqs` | integer \| None                             | `None`       | Terminate training after consuming this number of samples. For benchmarking purposes only. None indicates normal training. |
 | `tokenizer_path`     | string                                      | `""`         | Path to the tokenizer.                                                                                                     |
+| `weight_update_mode` | string                                      | `"disk"`     | -                                                                                                                          |
 | `train_dataset`      | [`DatasetConfig`](section-dataset)          | **Required** | -                                                                                                                          |
 | `valid_dataset`      | [`DatasetConfig`](section-dataset) \| None  | `None`       | -                                                                                                                          |
 | `saver`              | [`SaverConfig`](section-saver)              | **Required** | -                                                                                                                          |
@@ -156,6 +162,7 @@ Configuration for Reward Model (RW) training experiments.
 | `stats_logger`       | [`StatsLoggerConfig`](section-stats-logger) | **Required** | -                                                                                                                          |
 | `recover`            | [`RecoverConfig`](section-recover)          | **Required** | -                                                                                                                          |
 | `sglang`             | [`SGLangConfig`](section-sg-lang)           | **Required** | -                                                                                                                          |
+| `vllm`               | [`vLLMConfig`](section-v-llm)               | **Required** | -                                                                                                                          |
 | `launcher`           | [`LauncherConfig`](section-launcher)        | **Required** | -                                                                                                                          |
 | `scheduler`          | [`SchedulerConfig`](section-scheduler)      | **Required** | -                                                                                                                          |
 | `model`              | [`TrainEngineConfig`](section-train-engine) | **Required** | -                                                                                                                          |
@@ -177,6 +184,7 @@ Configuration for Supervised Fine-Tuning (SFT) experiments.
 | `total_train_steps`  | integer \| None                             | `None`       | Terminate training after this number of steps. For benchmarking purposes only. None indicates normal training.             |
 | `total_train_n_seqs` | integer \| None                             | `None`       | Terminate training after consuming this number of samples. For benchmarking purposes only. None indicates normal training. |
 | `tokenizer_path`     | string                                      | `""`         | Path to the tokenizer.                                                                                                     |
+| `weight_update_mode` | string                                      | `"disk"`     | -                                                                                                                          |
 | `train_dataset`      | [`DatasetConfig`](section-dataset)          | **Required** | -                                                                                                                          |
 | `valid_dataset`      | [`DatasetConfig`](section-dataset) \| None  | `None`       | -                                                                                                                          |
 | `saver`              | [`SaverConfig`](section-saver)              | **Required** | -                                                                                                                          |
@@ -184,6 +192,7 @@ Configuration for Supervised Fine-Tuning (SFT) experiments.
 | `stats_logger`       | [`StatsLoggerConfig`](section-stats-logger) | **Required** | -                                                                                                                          |
 | `recover`            | [`RecoverConfig`](section-recover)          | **Required** | -                                                                                                                          |
 | `sglang`             | [`SGLangConfig`](section-sg-lang)           | **Required** | -                                                                                                                          |
+| `vllm`               | [`vLLMConfig`](section-v-llm)               | **Required** | -                                                                                                                          |
 | `launcher`           | [`LauncherConfig`](section-launcher)        | **Required** | -                                                                                                                          |
 | `scheduler`          | [`SchedulerConfig`](section-scheduler)      | **Required** | -                                                                                                                          |
 | `model`              | [`TrainEngineConfig`](section-train-engine) | **Required** | -                                                                                                                          |
@@ -436,16 +445,18 @@ https://github.com/sgl-project/sglang for detailed documentation.
 
 Configuration for dataset loading and preprocessing.
 
-| Parameter     | Type            | Default      | Description                                                                      |
-| ------------- | --------------- | ------------ | -------------------------------------------------------------------------------- |
-| `path`        | string          | **Required** | Path to the dataset. Can be a local path or a HuggingFace dataset name.          |
-| `type`        | string          | **Required** | Type of training method, e.g., 'sft', 'rl', etc.                                 |
-| `batch_size`  | integer         | `1`          | Batch size for the dataloader                                                    |
-| `shuffle`     | boolean         | `True`       | Whether to shuffle the dataset                                                   |
-| `pin_memory`  | boolean         | `False`      | Pin memory for faster data loading (set True for GPU training)                   |
-| `num_workers` | integer         | `0`          | Number of worker processes for data loading                                      |
-| `drop_last`   | boolean         | `True`       | Drop the last incomplete batch                                                   |
-| `max_length`  | integer \| None | `None`       | Maximum token length of sequences in dataset. Longer sequences are filtered out. |
+| Parameter          | Type            | Default      | Description                                                                                                 |
+| ------------------ | --------------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `path`             | string          | **Required** | Path to the dataset. Can be a local path or a HuggingFace dataset name.                                     |
+| `type`             | string          | **Required** | Type of training method, e.g., 'sft', 'rl', etc.                                                            |
+| `batch_size`       | integer         | `1`          | Batch size for the dataloader                                                                               |
+| `shuffle`          | boolean         | `True`       | Whether to shuffle the dataset                                                                              |
+| `pin_memory`       | boolean         | `False`      | Pin memory for faster data loading (set True for GPU training)                                              |
+| `num_workers`      | integer         | `0`          | Number of worker processes for data loading                                                                 |
+| `drop_last`        | boolean         | `True`       | Drop the last incomplete batch                                                                              |
+| `single_rank_load` | boolean         | `False`      | Use single rank rollout send/recive or not                                                                  |
+| `balance_batch`    | boolean         | `False`      | balance all rollouts across dp ranks by total tokens.now, it works only when single_rank_load was set true. |
+| `max_length`       | integer \| None | `None`       | Maximum token length of sequences in dataset. Longer sequences are filtered out.                            |
 
 (section-cluster)=
 
@@ -626,3 +637,29 @@ Configuration for worker scheduling. Used in the single-controller mode. Experim
 | `reward_functioncall_config`  | `Dict` | **Required**                        | -           |
 | `reward_model_path`           | string | `""`                                | -           |
 | `reward_model_service_url`    | string | `"http://localhost:30000/classify"` | -           |
+
+(section-v-llm)=
+
+## vLLM Configuration
+
+Configuration for vLLM runtime.
+
+| Parameter                | Type            | Default                                                             | Description |
+| ------------------------ | --------------- | ------------------------------------------------------------------- | ----------- |
+| `model`                  | string          | `""`                                                                | -           |
+| `seed`                   | integer         | `1`                                                                 | -           |
+| `skip_tokenizer_init`    | boolean         | `False`                                                             | -           |
+| `enforce_eager`          | boolean         | `True`                                                              | -           |
+| `dtype`                  | string          | `"bfloat16"`                                                        | -           |
+| `max_num_seqs`           | integer         | `256`                                                               | -           |
+| `block_size`             | integer         | `16`                                                                | -           |
+| `swap_space`             | integer         | `4`                                                                 | -           |
+| `cpu_offload_gb`         | float           | `0`                                                                 | -           |
+| `max_seq_len_to_capture` | integer         | `32768`                                                             | -           |
+| `disable_sliding_window` | boolean         | `True`                                                              | -           |
+| `max_model_len`          | integer \| None | `32768`                                                             | -           |
+| `enable_chunked_prefill` | boolean         | `False`                                                             | -           |
+| `enable_prefix_caching`  | boolean         | `False`                                                             | -           |
+| `gpu_memory_utilization` | float           | `0.9`                                                               | -           |
+| `worker_extension_cls`   | string          | `"areal.thirdparty.vllm.vllm_worker_extension.VLLMWorkerExtension"` | -           |
+| `enable_sleep_mode`      | boolean         | `False`                                                             | -           |
